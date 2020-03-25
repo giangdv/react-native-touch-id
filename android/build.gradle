@@ -12,10 +12,6 @@ buildscript {
     jcenter()
     google()
   }
-
-  dependencies {
-    classpath _ext.has('gradleBuildTools') ? _ext.gradleBuildTools : 'com.android.tools.build:gradle:3.4.0'
-  }
 }
 
 apply plugin: 'com.android.library'
