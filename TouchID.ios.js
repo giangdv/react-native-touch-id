@@ -18,7 +18,7 @@ export default {
     return new Promise((resolve, reject) => {
       NativeTouchID.isSupported(config, (error, biometryType) => {
         if (error) {
-          return reject(createError(config, error.message));
+          return reject(createError(config, error.message, biometryType));
         }
 
         resolve(biometryType);
@@ -48,15 +48,16 @@ export default {
   }
 };
 
-function createError(config, error) {
+function createError(config, error, biometryType) {
   const { unifiedErrors } = config || {};
 
   if (unifiedErrors) {
-    return new TouchIDUnifiedError(getError(error));
+    return new TouchIDUnifiedError(getError(error), biometryType);
   }
 
   const details = iOSErrors[error];
   details.name = error;
+  details.biometryType = biometryType;
 
   return new TouchIDError(error, details);
 }

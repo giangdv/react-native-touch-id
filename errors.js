@@ -11,11 +11,12 @@ class TouchIDError extends Error {
 }
 
 class TouchIDUnifiedError extends Error {
-  constructor(error) {
+  constructor(error, biometryType) {
     super();
     this.name = 'TouchIDError';
     this.message = error.message;
     this.code = error.code;
+    this.biometryType = biometryType;
   }
 }
 
