@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.hardware.fingerprint.FingerprintManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,6 +13,9 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.app.Activity;
+import android.app.KeyguardManager;
+import android.content.Intent;
 
 import com.facebook.react.bridge.ReadableMap;
 
@@ -21,6 +25,7 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
     private DialogResultListener dialogCallback;
     private FingerprintHandler mFingerprintHandler;
     private boolean isAuthInProgress;
+    private KeyguardManager mKeyguardManager;
 
     private ImageView mFingerprintImage;
     private TextView mFingerprintSensorDescription;
@@ -34,12 +39,20 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
     private String sensorDescription = "";
     private String sensorErrorDescription = "";
     private String errorText = "";
+    private int failedTimes;
+    private int oneTimeOfFailure = 1;
+    private int maxTimesCanFail = 5;
+    private int PROMPT_FOR_KEYGUARD = 1;
+    private Button mEnterKeyguardButton;
+    private boolean usePasscodeFallback;
 
     @Override
     public void onAttach(Context context) {
         super.onAttach(context);
 
         this.mFingerprintHandler = new FingerprintHandler(context, this);
+        this.mKeyguardManager = (KeyguardManager) getActivity().getSystemService(Context.KEYGUARD_SERVICE);
+        this.failedTimes = 0;
     }
 
     @Override
@@ -50,7 +63,7 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    public View onCreateView(final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
         final View v = inflater.inflate(R.layout.fingerprint_dialog, container, false);
 
         final TextView mFingerprintDescription = (TextView) v.findViewById(R.id.fingerprint_description);
@@ -66,6 +79,15 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
 
         this.mFingerprintError = (TextView) v.findViewById(R.id.fingerprint_error);
         this.mFingerprintError.setText(this.errorText);
+
+        this.mEnterKeyguardButton = (Button) v.findViewById(R.id.enter_keyguard_button);
+        this.mEnterKeyguardButton.setVisibility(v.INVISIBLE);
+        this.mEnterKeyguardButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                promptForKeyguard();
+            }
+        });
 
         final Button mCancelButton = (Button) v.findViewById(R.id.cancel_button);
         mCancelButton.setText(this.cancelText);
@@ -153,6 +175,10 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
         if (config.hasKey("imageErrorColor")) {
             this.imageErrorColor = config.getInt("imageErrorColor");
         }
+
+        if (config.hasKey("passcodeFallback")) {
+            this.usePasscodeFallback = config.getBoolean("passcodeFallback");
+        }
     }
 
     public interface DialogResultListener {
@@ -165,13 +191,26 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
 
     @Override
     public void onAuthenticated() {
+        this.failedTimes = 0;
         this.isAuthInProgress = false;
         this.dialogCallback.onAuthenticated();
-        dismiss();
+        this.getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                dismiss();
+            }
+        });
     }
 
     @Override
     public void onError(String errorString, int errorCode) {
+        this.failedTimes++;
+        if (this.usePasscodeFallback && this.failedTimes >= this.oneTimeOfFailure) {
+            this.mEnterKeyguardButton.setVisibility(getView().VISIBLE);
+            if (this.failedTimes == this.maxTimesCanFail) {
+                promptForKeyguard();
+            }
+        }
         this.mFingerprintError.setText(errorString);
         this.mFingerprintImage.setColorFilter(this.imageErrorColor);
         this.mFingerprintSensorDescription.setText(this.sensorErrorDescription);
@@ -179,9 +218,25 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
 
     @Override
     public void onCancelled() {
+        this.failedTimes = 0;
         this.isAuthInProgress = false;
         this.mFingerprintHandler.endAuth();
         this.dialogCallback.onCancelled();
         dismiss();
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode == Activity.RESULT_OK) {
+            onAuthenticated();
+        } else if (resultCode == Activity.RESULT_CANCELED) {
+            onCancelled();
+        }
+    }
+
+    public void promptForKeyguard() {
+        Intent intent = this.mKeyguardManager.createConfirmDeviceCredentialIntent(null, null);
+        startActivityForResult(intent, PROMPT_FOR_KEYGUARD);
     }
 }
