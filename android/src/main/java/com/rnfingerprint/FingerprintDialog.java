@@ -45,6 +45,7 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
     private int PROMPT_FOR_KEYGUARD = 1;
     private Button mEnterKeyguardButton;
     private boolean usePasscodeFallback;
+    private boolean isShowPasscode;
 
     @Override
     public void onAttach(Context context) {
@@ -53,6 +54,7 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
         this.mFingerprintHandler = new FingerprintHandler(context, this);
         this.mKeyguardManager = (KeyguardManager) getActivity().getSystemService(Context.KEYGUARD_SERVICE);
         this.failedTimes = 0;
+        this.isShowPasscode = false;
     }
 
     @Override
@@ -191,13 +193,14 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
 
     @Override
     public void onAuthenticated() {
+        this.isShowPasscode = false;
         this.failedTimes = 0;
         this.isAuthInProgress = false;
-        this.dialogCallback.onAuthenticated();
         this.getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 dismiss();
+                dialogCallback.onAuthenticated();
             }
         });
     }
@@ -218,11 +221,17 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
 
     @Override
     public void onCancelled() {
+        this.isShowPasscode = false;
         this.failedTimes = 0;
         this.isAuthInProgress = false;
-        this.mFingerprintHandler.endAuth();
-        this.dialogCallback.onCancelled();
-        dismiss();
+        this.getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mFingerprintHandler.endAuth();
+                dialogCallback.onCancelled();
+                dismiss();
+            }
+        });
     }
 
     @Override
@@ -236,6 +245,8 @@ public class FingerprintDialog extends DialogFragment implements FingerprintHand
     }
 
     public void promptForKeyguard() {
+        if (this.isShowPasscode) return;
+        this.isShowPasscode = true;
         Intent intent = this.mKeyguardManager.createConfirmDeviceCredentialIntent(null, null);
         startActivityForResult(intent, PROMPT_FOR_KEYGUARD);
     }
